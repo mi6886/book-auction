@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>拍卖管理后台</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      color: #333;
+      min-height: 100vh;
+      padding-bottom: 80px;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #2d3436 0%, #636e72 100%);
+      color: white;
+      padding: 20px 16px 16px;
+      text-align: center;
+      position: sticky; top: 0; z-index: 100;
+    }
+    .header h1 { font-size: 20px; font-weight: 600; }
+    .header p { font-size: 13px; opacity: 0.85; margin-top: 4px; }
+    .header .link-home {
+      position: absolute; right: 16px; top: 50%;
+      transform: translateY(-50%);
+      color: white; text-decoration: none;
+      font-size: 13px; opacity: 0.8;
+    }
+
+    .upload-section {
+      background: white; margin: 12px;
+      border-radius: 12px; padding: 20px 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    .upload-section h2 { font-size: 17px; margin-bottom: 16px; }
+    .form-group { margin-bottom: 14px; }
+    .form-group label {
+      display: block; font-size: 14px; color: #666;
+      margin-bottom: 6px; font-weight: 500;
+    }
+    .form-group label .required { color: #e74c3c; }
+    .form-group input, .form-group textarea, .form-group select {
+      width: 100%; padding: 10px 12px;
+      border: 1px solid #ddd; border-radius: 8px;
+      font-size: 15px; outline: none; font-family: inherit;
+    }
+    .form-group input:focus, .form-group textarea:focus,
+    .form-group select:focus { border-color: #636e72; }
+    .form-group textarea { resize: vertical; min-height: 80px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+
+    .image-upload-area { display: flex; gap: 10px; flex-wrap: wrap; }
+    .image-preview {
+      position: relative; width: 80px; height: 80px;
+      border-radius: 8px; overflow: hidden;
+    }
+    .image-preview img { width: 100%; height: 100%; object-fit: cover; }
+    .image-preview .remove {
+      position: absolute; top: 2px; right: 2px;
+      width: 20px; height: 20px; border-radius: 50%;
+      background: rgba(0,0,0,0.6); color: white;
+      border: none; font-size: 12px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .add-image-btn {
+      width: 80px; height: 80px;
+      border: 2px dashed #ccc; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; color: #aaa; font-size: 28px;
+    }
+    .add-image-btn:active { border-color: #636e72; color: #636e72; }
+
+    .btn-submit {
+      width: 100%; padding: 13px;
+      border: none; border-radius: 8px;
+      background: linear-gradient(135deg, #2d3436 0%, #636e72 100%);
+      color: white; font-size: 16px; font-weight: 600;
+      cursor: pointer; margin-top: 4px;
+    }
+    .btn-submit:active { opacity: 0.9; }
+    .btn-submit:disabled { opacity: 0.5; cursor: default; }
+
+    .manage-section { margin: 12px; }
+    .manage-section h2 { font-size: 17px; margin-bottom: 12px; padding: 0 4px; }
+
+    .manage-card {
+      background: white; border-radius: 12px;
+      padding: 16px; margin-bottom: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    .manage-card .top-row {
+      display: flex; gap: 12px; align-items: flex-start;
+    }
+    .manage-card .thumb {
+      width: 70px; height: 70px;
+      border-radius: 8px; object-fit: cover;
+      background: #eee; flex-shrink: 0;
+    }
+    .manage-card .thumb-placeholder {
+      width: 70px; height: 70px; border-radius: 8px;
+      background: #eee; display: flex;
+      align-items: center; justify-content: center;
+      font-size: 28px; flex-shrink: 0;
+    }
+    .manage-card .info { flex: 1; min-width: 0; }
+    .manage-card .info .title {
+      font-size: 16px; font-weight: 600;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .manage-card .info .meta {
+      font-size: 13px; color: #888; margin-top: 4px;
+      line-height: 1.6;
+    }
+    .manage-card .info .price { color: #e74c3c; font-weight: 600; }
+
+    .status-badge {
+      display: inline-block; font-size: 11px;
+      padding: 2px 8px; border-radius: 4px; font-weight: 500;
+    }
+    .status-badge.bidding { background: #e3f2fd; color: #1976d2; }
+    .status-badge.ended { background: #fff3e0; color: #ff9800; }
+    .status-badge.sold { background: #f5f5f5; color: #999; }
+
+    /* Bid list in manage card */
+    .manage-bids {
+      margin-top: 10px; padding-top: 10px;
+      border-top: 1px solid #f0f0f0;
+    }
+    .manage-bids .bid-row {
+      display: flex; justify-content: space-between;
+      font-size: 13px; padding: 3px 0;
+    }
+    .manage-bids .bid-row .name { color: #333; }
+    .manage-bids .bid-row .amount { color: #e74c3c; font-weight: 600; }
+    .manage-bids .bid-row.top {
+      font-size: 14px; font-weight: 600;
+      background: #fff8e1; margin: 0 -4px; padding: 4px;
+      border-radius: 4px;
+    }
+
+    /* Winner highlight */
+    .winner-box {
+      background: linear-gradient(135deg, #fff8e1, #ffecb3);
+      border-radius: 8px; padding: 10px 14px;
+      margin-top: 10px; text-align: center;
+    }
+    .winner-box .label { font-size: 12px; color: #f57f17; }
+    .winner-box .winner-name { font-size: 16px; font-weight: 700; color: #e65100; }
+    .winner-box .winner-amount { font-size: 14px; color: #e74c3c; }
+
+    .manage-card .actions {
+      display: flex; gap: 8px; margin-top: 12px;
+    }
+    .manage-card .actions button {
+      flex: 1; padding: 9px;
+      border: none; border-radius: 8px;
+      font-size: 13px; font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-end {
+      background: #ff9800; color: white;
+    }
+    .btn-sold {
+      background: #4caf50; color: white;
+    }
+    .btn-reopen {
+      background: #667eea; color: white;
+    }
+    .btn-del {
+      background: none; border: 1px solid #e74c3c !important;
+      color: #e74c3c;
+    }
+    .manage-card .actions button:active { opacity: 0.8; }
+
+    .empty-manage {
+      text-align: center; padding: 40px 20px;
+      color: #aaa; font-size: 14px;
+    }
+
+    .toast {
+      position: fixed; top: 80px; left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.75);
+      color: white; padding: 10px 20px;
+      border-radius: 8px; font-size: 14px;
+      z-index: 300; animation: fadeInOut 2s ease;
+      pointer-events: none;
+    }
+    @keyframes fadeInOut {
+      0% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+      15% { opacity: 1; transform: translateX(-50%) translateY(0); }
+      75% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+    /* Login screen */
+    .login-screen {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; padding: 20px;
+      background: linear-gradient(135deg, #2d3436 0%, #636e72 100%);
+    }
+    .login-box {
+      background: white; border-radius: 16px;
+      padding: 32px 24px; width: 100%; max-width: 360px;
+      text-align: center;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    }
+    .login-box h2 { font-size: 20px; margin-bottom: 8px; }
+    .login-box p { font-size: 13px; color: #999; margin-bottom: 20px; }
+    .login-box input {
+      width: 100%; padding: 12px; border: 1px solid #ddd;
+      border-radius: 8px; font-size: 15px; outline: none;
+      text-align: center; margin-bottom: 14px;
+    }
+    .login-box input:focus { border-color: #636e72; }
+    .login-box .btn-login {
+      width: 100%; padding: 13px; border: none; border-radius: 8px;
+      background: linear-gradient(135deg, #2d3436 0%, #636e72 100%);
+      color: white; font-size: 16px; font-weight: 600; cursor: pointer;
+    }
+    .login-box .login-error {
+      color: #e74c3c; font-size: 13px; margin-top: 10px; display: none;
+    }
+
+    .app-content { display: none; }
+  </style>
+</head>
+<body>
+  <!-- Login screen -->
+  <div class="login-screen" id="loginScreen">
+    <div class="login-box">
+      <h2>拍卖管理后台</h2>
+      <p>请输入管理密码</p>
+      <input type="password" id="passwordInput" placeholder="输入密码" />
+      <button class="btn-login" id="loginBtn">登录</button>
+      <div class="login-error" id="loginError">密码错误，请重试</div>
+    </div>
+  </div>
+
+  <!-- Main app (hidden until login) -->
+  <div class="app-content" id="appContent">
+  <div class="header">
+    <h1>拍卖管理后台</h1>
+    <p>上架书籍、管理拍卖</p>
+    <a href="/" class="link-home">买家视角 &rarr;</a>
+  </div>
+
+  <div class="upload-section">
+    <h2>上架新书拍卖</h2>
+    <form id="uploadForm">
+      <div class="form-group">
+        <label><span class="required">*</span> 书名</label>
+        <input type="text" name="title" required placeholder="输入书籍名称" />
+      </div>
+      <div class="form-group">
+        <label>作者</label>
+        <input type="text" name="author" placeholder="输入作者名" />
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label><span class="required">*</span> 起拍价（元）</label>
+          <input type="number" name="startPrice" required min="0" step="1" placeholder="10" />
+        </div>
+        <div class="form-group">
+          <label>加价幅度</label>
+          <input type="number" name="bidStep" min="1" step="1" placeholder="1" value="1" />
+        </div>
+        <div class="form-group">
+          <label>成色</label>
+          <select name="condition">
+            <option value="全新">全新</option>
+            <option value="九成新" selected>九成新</option>
+            <option value="八成新">八成新</option>
+            <option value="七成新">七成新</option>
+            <option value="有瑕疵">有瑕疵</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>描述</label>
+        <textarea name="description" placeholder="书的简介、出售原因等..."></textarea>
+      </div>
+      <div class="form-group">
+        <label>书籍图片（最多5张）</label>
+        <div class="image-upload-area" id="imageArea">
+          <input type="file" id="fileInput" accept="image/*" multiple hidden />
+          <div class="add-image-btn" id="addImageBtn">+</div>
+        </div>
+      </div>
+      <button type="submit" class="btn-submit" id="submitBtn">开始拍卖</button>
+    </form>
+  </div>
+
+  <div class="manage-section">
+    <h2>拍卖管理</h2>
+    <div id="manageList"></div>
+  </div>
+
+  </div><!-- end app-content -->
+
+  <script>
+    let adminPassword = sessionStorage.getItem('adminPassword') || '';
+
+    // Admin fetch helper - adds password header
+    function adminFetch(url, options = {}) {
+      options.headers = options.headers || {};
+      options.headers['X-Admin-Password'] = adminPassword;
+      return fetch(url, options);
+    }
+
+    // Login logic
+    async function tryLogin(pwd) {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pwd })
+      });
+      return res.ok;
+    }
+
+    // Check if already logged in
+    (async () => {
+      if (adminPassword && await tryLogin(adminPassword)) {
+        showApp();
+      }
+    })();
+
+    document.getElementById('loginBtn').addEventListener('click', doLogin);
+    document.getElementById('passwordInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') doLogin();
+    });
+
+    async function doLogin() {
+      const pwd = document.getElementById('passwordInput').value;
+      if (await tryLogin(pwd)) {
+        adminPassword = pwd;
+        sessionStorage.setItem('adminPassword', pwd);
+        showApp();
+      } else {
+        document.getElementById('loginError').style.display = 'block';
+      }
+    }
+
+    function showApp() {
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('appContent').style.display = 'block';
+      loadManageList();
+    }
+
+    const selectedFiles = [];
+
+    document.getElementById('addImageBtn').addEventListener('click', () => {
+      if (selectedFiles.length >= 5) { showToast('最多上传5张图片'); return; }
+      document.getElementById('fileInput').click();
+    });
+
+    document.getElementById('fileInput').addEventListener('change', (e) => {
+      const files = Array.from(e.target.files);
+      const remaining = 5 - selectedFiles.length;
+      files.slice(0, remaining).forEach(file => {
+        selectedFiles.push(file);
+        renderPreviews();
+      });
+      e.target.value = '';
+    });
+
+    function renderPreviews() {
+      const area = document.getElementById('imageArea');
+      area.querySelectorAll('.image-preview').forEach(el => el.remove());
+      selectedFiles.forEach((file, idx) => {
+        const div = document.createElement('div');
+        div.className = 'image-preview';
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(file);
+        const btn = document.createElement('button');
+        btn.className = 'remove'; btn.textContent = '×';
+        btn.onclick = () => { selectedFiles.splice(idx, 1); renderPreviews(); };
+        div.appendChild(img); div.appendChild(btn);
+        area.insertBefore(div, document.getElementById('addImageBtn'));
+      });
+      document.getElementById('addImageBtn').style.display =
+        selectedFiles.length >= 5 ? 'none' : 'flex';
+    }
+
+    document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true; btn.textContent = '上架中...';
+
+      const form = e.target;
+      const formData = new FormData();
+      formData.append('title', form.title.value);
+      formData.append('author', form.author.value);
+      formData.append('startPrice', form.startPrice.value);
+      formData.append('bidStep', form.bidStep.value || '1');
+      formData.append('condition', form.condition.value);
+      formData.append('description', form.description.value);
+      selectedFiles.forEach(file => formData.append('images', file));
+
+      try {
+        const res = await adminFetch('/api/books', { method: 'POST', body: formData });
+        if (!res.ok) throw new Error('上传失败');
+        showToast('拍卖已开始！');
+        form.reset(); form.bidStep.value = '1';
+        selectedFiles.length = 0;
+        renderPreviews();
+        loadManageList();
+      } catch (err) {
+        showToast('上架失败，请重试');
+      } finally {
+        btn.disabled = false; btn.textContent = '开始拍卖';
+      }
+    });
+
+    async function loadManageList() {
+      const res = await fetch('/api/books');
+      const books = await res.json();
+      const list = document.getElementById('manageList');
+
+      if (books.length === 0) {
+        list.innerHTML = '<div class="empty-manage">还没有上架书籍</div>';
+        return;
+      }
+
+      list.innerHTML = books.map(book => {
+        const statusLabels = { bidding: '竞拍中', ended: '已结束', sold: '已售出' };
+        const thumb = book.images.length > 0
+          ? `<img class="thumb" src="${book.images[0]}" />`
+          : `<div class="thumb-placeholder">📖</div>`;
+
+        const highestBid = book.bids.length > 0 ? book.bids[book.bids.length - 1] : null;
+
+        // Show top 3 bids
+        const topBids = [...book.bids].reverse().slice(0, 3);
+        const bidsHtml = topBids.length > 0 ? `
+          <div class="manage-bids">
+            ${topBids.map((bid, i) => `
+              <div class="bid-row ${i === 0 ? 'top' : ''}">
+                <span class="name">${i === 0 ? '👑 ' : ''}${escapeHtml(bid.name)}</span>
+                <span class="amount">¥${bid.amount.toFixed(0)}</span>
+              </div>
+            `).join('')}
+            ${book.bids.length > 3 ? `<div style="text-align:center;font-size:12px;color:#ccc;margin-top:4px;">还有 ${book.bids.length - 3} 条出价</div>` : ''}
+          </div>` : '<div class="manage-bids" style="font-size:13px;color:#ccc;">暂无出价</div>';
+
+        // Winner box for ended auctions
+        const winnerHtml = book.status === 'ended' && book.winner ? `
+          <div class="winner-box">
+            <div class="label">中标者</div>
+            <div class="winner-name">${escapeHtml(book.winner.name)}</div>
+            <div class="winner-amount">¥${book.winner.amount.toFixed(0)}</div>
+          </div>` : '';
+
+        // Action buttons
+        let actionsHtml = '';
+        if (book.status === 'bidding') {
+          actionsHtml = `
+            <button class="btn-end" onclick="endAuction('${book.id}')">结束拍卖</button>
+            <button class="btn-del" onclick="deleteBook('${book.id}')">删除</button>`;
+        } else if (book.status === 'ended') {
+          actionsHtml = `
+            <button class="btn-sold" onclick="markSold('${book.id}')">标记已售</button>
+            <button class="btn-reopen" onclick="reopenAuction('${book.id}')">重新开拍</button>
+            <button class="btn-del" onclick="deleteBook('${book.id}')">删除</button>`;
+        } else {
+          actionsHtml = `
+            <button class="btn-del" onclick="deleteBook('${book.id}')">删除</button>`;
+        }
+
+        return `
+          <div class="manage-card">
+            <div class="top-row">
+              ${thumb}
+              <div class="info">
+                <div class="title">
+                  ${escapeHtml(book.title)}
+                  <span class="status-badge ${book.status}">${statusLabels[book.status]}</span>
+                </div>
+                <div class="meta">
+                  起拍 <span class="price">¥${book.startPrice.toFixed(0)}</span>
+                  · 加价 ¥${book.bidStep.toFixed(0)}
+                  ${highestBid ? ` · 当前最高 <span class="price">¥${highestBid.amount.toFixed(0)}</span>` : ''}
+                  <br>${book.bids.length} 人出价 · ${book.condition}
+                </div>
+              </div>
+            </div>
+            ${bidsHtml}
+            ${winnerHtml}
+            <div class="actions">${actionsHtml}</div>
+          </div>`;
+      }).join('');
+    }
+
+    async function endAuction(id) {
+      if (!confirm('确定要结束这场拍卖吗？结束后将确定中标者。')) return;
+      await adminFetch(`/api/books/${id}/end`, { method: 'POST' });
+      showToast('拍卖已结束');
+      loadManageList();
+    }
+
+    async function markSold(id) {
+      await adminFetch(`/api/books/${id}/sold`, { method: 'POST' });
+      showToast('已标记为售出');
+      loadManageList();
+    }
+
+    async function reopenAuction(id) {
+      await adminFetch(`/api/books/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'bidding' })
+      });
+      showToast('已重新开拍');
+      loadManageList();
+    }
+
+    async function deleteBook(id) {
+      if (!confirm('确定要删除这本书吗？')) return;
+      await adminFetch(`/api/books/${id}`, { method: 'DELETE' });
+      showToast('已删除');
+      loadManageList();
+    }
+
+    function showToast(msg) {
+      const toast = document.createElement('div');
+      toast.className = 'toast'; toast.textContent = msg;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 2000);
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    loadManageList();
+    setInterval(loadManageList, 5000);
+  </script>
+</body>
+</html>

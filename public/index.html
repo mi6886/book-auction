@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>二手书拍卖</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      color: #333;
+      min-height: 100vh;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px 16px 16px;
+      text-align: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .header h1 { font-size: 20px; font-weight: 600; }
+    .header p { font-size: 13px; opacity: 0.85; margin-top: 4px; }
+
+    .book-list { padding: 12px; display: grid; gap: 12px; }
+
+    .book-card {
+      background: white;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .book-card .image-area {
+      position: relative;
+      width: 100%;
+      height: 200px;
+      background: #eee;
+      overflow: hidden;
+    }
+    .book-card .image-area img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+    }
+    .book-card .no-image {
+      display: flex; align-items: center; justify-content: center;
+      height: 100%; color: #aaa; font-size: 48px;
+    }
+    .book-card .image-slider {
+      display: flex; overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch;
+      height: 100%;
+    }
+    .book-card .image-slider img {
+      flex: 0 0 100%; scroll-snap-align: start;
+    }
+    .image-slider::-webkit-scrollbar { display: none; }
+    .image-dots {
+      position: absolute; bottom: 8px; left: 50%;
+      transform: translateX(-50%); display: flex; gap: 5px;
+    }
+    .image-dots .dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: rgba(255,255,255,0.5);
+    }
+    .image-dots .dot.active { background: white; }
+
+    /* Status ribbon */
+    .status-ribbon {
+      position: absolute; top: 12px; right: -30px;
+      padding: 4px 40px; font-size: 12px; font-weight: 600;
+      color: white; transform: rotate(45deg);
+    }
+    .status-ribbon.ended { background: #ff9800; }
+    .status-ribbon.sold { background: #999; }
+
+    .book-info { padding: 14px 16px 10px; }
+    .book-title { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+    .book-author { font-size: 13px; color: #888; margin-bottom: 8px; }
+    .book-desc {
+      font-size: 14px; color: #666; line-height: 1.5; margin-bottom: 10px;
+      display: -webkit-box; -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .book-condition {
+      font-size: 12px; background: #f0f0f0;
+      color: #666; padding: 3px 8px; border-radius: 10px;
+      display: inline-block; margin-bottom: 10px;
+    }
+
+    /* Auction info */
+    .auction-info {
+      padding: 0 16px;
+      margin-bottom: 12px;
+    }
+    .price-row {
+      display: flex; align-items: baseline; gap: 12px;
+      margin-bottom: 8px;
+    }
+    .start-price {
+      font-size: 13px; color: #999;
+    }
+    .current-price {
+      font-size: 24px; font-weight: 700; color: #e74c3c;
+    }
+    .current-price::before { content: '¥'; font-size: 14px; }
+    .current-label {
+      font-size: 12px; color: #e74c3c;
+    }
+    .bid-step {
+      font-size: 12px; color: #999;
+    }
+    .bid-count {
+      font-size: 13px; color: #667eea; font-weight: 500;
+    }
+
+    /* Bid history */
+    .bid-history {
+      padding: 0 16px;
+      margin-bottom: 12px;
+    }
+    .bid-history-title {
+      font-size: 13px; color: #999; margin-bottom: 6px;
+      cursor: pointer; user-select: none;
+    }
+    .bid-history-title::after {
+      content: ' ▾'; font-size: 10px;
+    }
+    .bid-history-list {
+      max-height: 0; overflow: hidden;
+      transition: max-height 0.3s ease;
+    }
+    .bid-history-list.open { max-height: 300px; overflow-y: auto; }
+    .bid-item {
+      display: flex; justify-content: space-between;
+      align-items: center; padding: 6px 0;
+      border-bottom: 1px solid #f5f5f5;
+      font-size: 13px;
+    }
+    .bid-item:last-child { border-bottom: none; }
+    .bid-item .bid-name { color: #333; }
+    .bid-item .bid-amount { color: #e74c3c; font-weight: 600; }
+    .bid-item .bid-time { color: #ccc; font-size: 11px; }
+    .bid-item.winner {
+      background: #fff8e1; margin: 0 -8px; padding: 6px 8px;
+      border-radius: 6px;
+    }
+
+    /* Bid form */
+    .bid-form {
+      padding: 0 16px 16px;
+      display: flex; gap: 8px;
+    }
+    .bid-form input[type="text"] {
+      flex: 1; padding: 10px 12px;
+      border: 1px solid #ddd; border-radius: 8px;
+      font-size: 14px; outline: none;
+      min-width: 0;
+    }
+    .bid-form input[type="number"] {
+      width: 100px; padding: 10px 8px;
+      border: 1px solid #ddd; border-radius: 8px;
+      font-size: 14px; outline: none;
+      text-align: center;
+    }
+    .bid-form input:focus { border-color: #667eea; }
+    .btn-bid {
+      padding: 10px 16px;
+      border: none; border-radius: 8px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white; font-size: 14px; font-weight: 600;
+      cursor: pointer; white-space: nowrap;
+    }
+    .btn-bid:active { transform: scale(0.97); opacity: 0.9; }
+    .btn-bid:disabled { opacity: 0.5; cursor: default; }
+
+    /* Ended / sold state */
+    .auction-ended {
+      padding: 12px 16px 16px;
+      text-align: center;
+    }
+    .winner-banner {
+      background: linear-gradient(135deg, #fff8e1, #ffecb3);
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 10px;
+    }
+    .winner-banner .label { font-size: 13px; color: #f57f17; }
+    .winner-banner .name {
+      font-size: 20px; font-weight: 700; color: #e65100;
+      margin: 4px 0;
+    }
+    .winner-banner .amount {
+      font-size: 16px; color: #e74c3c;
+    }
+    .no-bids-banner {
+      background: #f5f5f5; border-radius: 10px; padding: 20px;
+      color: #999; font-size: 14px;
+    }
+    .sold-banner {
+      background: #f5f5f5; border-radius: 10px; padding: 16px;
+      color: #999; font-size: 15px;
+    }
+
+    .empty-state {
+      text-align: center; padding: 60px 20px; color: #aaa;
+    }
+    .empty-state .icon { font-size: 64px; margin-bottom: 16px; }
+    .empty-state p { font-size: 15px; }
+
+    /* Toast */
+    .toast {
+      position: fixed; top: 80px; left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.75);
+      color: white; padding: 10px 20px;
+      border-radius: 8px; font-size: 14px;
+      z-index: 300; animation: fadeInOut 2.5s ease;
+      pointer-events: none;
+    }
+    @keyframes fadeInOut {
+      0% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+      15% { opacity: 1; transform: translateX(-50%) translateY(0); }
+      75% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+
+    /* Auto-refresh indicator */
+    .refresh-bar {
+      text-align: center; padding: 8px;
+      font-size: 11px; color: #bbb;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>二手书拍卖</h1>
+    <p>看中就出价，价高者得</p>
+  </div>
+
+  <div class="book-list" id="bookList"></div>
+  <div class="refresh-bar">每 5 秒自动刷新出价</div>
+
+  <script>
+    let autoRefreshTimer = null;
+
+    async function loadBooks() {
+      const res = await fetch('/api/books');
+      const books = await res.json();
+      const list = document.getElementById('bookList');
+
+      if (books.length === 0) {
+        list.innerHTML = `
+          <div class="empty-state">
+            <div class="icon">📚</div>
+            <p>暂时没有书籍在拍<br>请稍后再来看看~</p>
+          </div>`;
+        return;
+      }
+
+      list.innerHTML = books.map(book => {
+        const highestBid = book.bids.length > 0 ? book.bids[book.bids.length - 1] : null;
+        const currentPrice = highestBid ? highestBid.amount : book.startPrice;
+        const minNextBid = highestBid ? currentPrice + book.bidStep : book.startPrice;
+
+        const imagesHtml = book.images.length > 0
+          ? `<div class="image-slider">${book.images.map(img =>
+              `<img src="${img}" alt="${escapeHtml(book.title)}" />`
+            ).join('')}</div>
+            ${book.images.length > 1 ? `<div class="image-dots">${book.images.map((_, i) =>
+              `<div class="dot ${i === 0 ? 'active' : ''}"></div>`
+            ).join('')}</div>` : ''}`
+          : `<div class="no-image">📖</div>`;
+
+        const ribbonHtml = book.status === 'ended'
+          ? '<div class="status-ribbon ended">已结束</div>'
+          : book.status === 'sold'
+          ? '<div class="status-ribbon sold">已售出</div>'
+          : '';
+
+        // Bid history (newest first for display)
+        const bidsReversed = [...book.bids].reverse();
+        const bidHistoryHtml = book.bids.length > 0 ? `
+          <div class="bid-history">
+            <div class="bid-history-title" onclick="toggleBids(this)">
+              出价记录（${book.bids.length} 次）
+            </div>
+            <div class="bid-history-list">
+              ${bidsReversed.map((bid, i) => `
+                <div class="bid-item ${i === 0 && book.status !== 'bidding' ? 'winner' : ''}">
+                  <span class="bid-name">${escapeHtml(bid.name)}${i === 0 ? ' 👑' : ''}</span>
+                  <span>
+                    <span class="bid-amount">¥${bid.amount.toFixed(0)}</span>
+                    <span class="bid-time">${formatTime(bid.time)}</span>
+                  </span>
+                </div>
+              `).join('')}
+            </div>
+          </div>` : '';
+
+        // Bottom section based on status
+        let bottomHtml = '';
+        if (book.status === 'bidding') {
+          bottomHtml = `
+            <div class="bid-form" id="bidForm_${book.id}">
+              <input type="text" placeholder="你的昵称" class="bid-name-input" />
+              <input type="number" placeholder="¥${minNextBid.toFixed(0)}" min="${minNextBid}" step="${book.bidStep}" class="bid-amount-input" value="${minNextBid.toFixed(0)}" />
+              <button class="btn-bid" onclick="placeBid('${book.id}')">出价</button>
+            </div>`;
+        } else if (book.status === 'ended') {
+          bottomHtml = `<div class="auction-ended">${
+            book.winner
+              ? `<div class="winner-banner">
+                  <div class="label">🎉 恭喜中标</div>
+                  <div class="name">${escapeHtml(book.winner.name)}</div>
+                  <div class="amount">成交价 ¥${book.winner.amount.toFixed(0)}</div>
+                </div>`
+              : `<div class="no-bids-banner">无人出价，拍卖已结束</div>`
+          }</div>`;
+        } else {
+          bottomHtml = `<div class="auction-ended"><div class="sold-banner">已售出</div></div>`;
+        }
+
+        return `
+          <div class="book-card">
+            <div class="image-area">
+              ${imagesHtml}
+              ${ribbonHtml}
+            </div>
+            <div class="book-info">
+              <div class="book-title">${escapeHtml(book.title)}</div>
+              ${book.author ? `<div class="book-author">${escapeHtml(book.author)}</div>` : ''}
+              ${book.description ? `<div class="book-desc">${escapeHtml(book.description)}</div>` : ''}
+              <span class="book-condition">${escapeHtml(book.condition)}</span>
+            </div>
+            <div class="auction-info">
+              <div class="price-row">
+                <div>
+                  <div class="current-label">${highestBid ? '当前最高出价' : '起拍价'}</div>
+                  <div class="current-price">${currentPrice.toFixed(0)}</div>
+                </div>
+                ${highestBid ? `<div class="start-price">起拍 ¥${book.startPrice.toFixed(0)}</div>` : ''}
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span class="bid-step">每次至少加价 ¥${book.bidStep.toFixed(0)}</span>
+                <span class="bid-count">${book.bids.length} 人出价</span>
+              </div>
+            </div>
+            ${bidHistoryHtml}
+            ${bottomHtml}
+          </div>`;
+      }).join('');
+    }
+
+    function toggleBids(el) {
+      const list = el.nextElementSibling;
+      list.classList.toggle('open');
+    }
+
+    async function placeBid(bookId) {
+      const form = document.getElementById(`bidForm_${bookId}`);
+      const nameInput = form.querySelector('.bid-name-input');
+      const amountInput = form.querySelector('.bid-amount-input');
+
+      const name = nameInput.value.trim();
+      const amount = parseFloat(amountInput.value);
+
+      if (!name) { showToast('请输入你的昵称'); nameInput.focus(); return; }
+      if (!amount || amount <= 0) { showToast('请输入有效的出价金额'); return; }
+
+      const btn = form.querySelector('.btn-bid');
+      btn.disabled = true;
+      btn.textContent = '出价中...';
+
+      try {
+        const res = await fetch(`/api/books/${bookId}/bid`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, amount })
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          showToast(data.error || '出价失败');
+          return;
+        }
+
+        showToast(`出价成功！¥${amount.toFixed(0)}`);
+        // Remember name for next bid
+        localStorage.setItem('bidderName', name);
+        loadBooks();
+      } catch (err) {
+        showToast('网络错误，请重试');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '出价';
+      }
+    }
+
+    function formatTime(ts) {
+      const d = new Date(ts);
+      return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+    }
+
+    function showToast(msg) {
+      const toast = document.createElement('div');
+      toast.className = 'toast';
+      toast.textContent = msg;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 2500);
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Auto-refresh every 5 seconds
+    loadBooks();
+    autoRefreshTimer = setInterval(loadBooks, 5000);
+
+    // Restore saved name
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        const saved = localStorage.getItem('bidderName');
+        if (saved) {
+          document.querySelectorAll('.bid-name-input').forEach(input => {
+            if (!input.value) input.value = saved;
+          });
+        }
+      }, 500);
+    });
+  </script>
+</body>
+</html>
