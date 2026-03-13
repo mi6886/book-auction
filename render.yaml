@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: book-auction
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: ADMIN_PASSWORD
+        value: bookadmin123
