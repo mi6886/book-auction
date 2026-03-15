@@ -7,3 +7,9 @@ services:
     envVars:
       - key: ADMIN_PASSWORD
         value: bookadmin123
+      - key: WX_APPID
+        value: wxab11b6507af6422a
+      - key: WX_SECRET
+        value: 8759523d08b4c8d81a90d31b125a9b62
+      - key: WX_REDIRECT_BASE
+        value: https://book-auction.onrender.com
