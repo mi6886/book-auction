@@ -106,7 +106,9 @@ function getSessionUser(req) {
 app.get('/auth/wechat', (req, res) => {
   const redirectUri = encodeURIComponent(`${WX_REDIRECT_BASE}/auth/wechat/callback`);
   const state = crypto.randomBytes(8).toString('hex');
-  const url = `https://open.weixin.qq.com/connect/oauth2/authorize?appid=${WX_APPID}&redirect_uri=${redirectUri}&response_type=code&scope=snsapi_userinfo&state=${state}#wechat_redirect`;
+  // 先尝试 snsapi_userinfo（需已认证），如失败可改为 snsapi_base
+  const scope = 'snsapi_userinfo';
+  const url = `https://open.weixin.qq.com/connect/oauth2/authorize?appid=${WX_APPID}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&state=${state}#wechat_redirect`;
   res.redirect(url);
 });
 
@@ -119,42 +121,42 @@ app.get('/auth/wechat/callback', async (req, res) => {
 
   try {
     // Exchange code for access_token
-    const tokenRes = await axios.get('https://api.weixin.qq.com/sns/oauth2/access_token', {
-      params: {
-        appid: WX_APPID,
-        secret: WX_SECRET,
-        code,
-        grant_type: 'authorization_code'
-      }
-    });
+    const tokenUrl = `https://api.weixin.qq.com/sns/oauth2/access_token?appid=${WX_APPID}&secret=${WX_SECRET}&code=${code}&grant_type=authorization_code`;
+    console.log('Requesting token with appid:', WX_APPID, 'secret length:', WX_SECRET.length);
+    const tokenRes = await axios.get(tokenUrl);
 
-    const { access_token, openid, errcode, errmsg } = tokenRes.data;
-    if (errcode) {
-      console.error('WeChat token error:', tokenRes.data);
-      return res.status(500).send(`微信授权失败: ${errmsg}`);
+    console.log('Token response:', JSON.stringify(tokenRes.data));
+    const tokenData = tokenRes.data;
+
+    if (tokenData.errcode) {
+      return res.status(500).send(`微信授权失败(${tokenData.errcode}): ${tokenData.errmsg}<br><br>AppID: ${WX_APPID}<br>Secret长度: ${WX_SECRET.length}`);
     }
 
-    // Get user info
-    const userRes = await axios.get('https://api.weixin.qq.com/sns/userinfo', {
-      params: {
-        access_token,
-        openid,
-        lang: 'zh_CN'
-      }
-    });
+    const { access_token, openid, scope } = tokenData;
+    let nickname = '微信用户';
+    let headimgurl = '';
 
-    const { nickname, headimgurl, errcode: uerr, errmsg: umsg } = userRes.data;
-    if (uerr) {
-      console.error('WeChat userinfo error:', userRes.data);
-      return res.status(500).send(`获取用户信息失败: ${umsg}`);
+    // 如果是 snsapi_userinfo 授权，获取用户详细信息
+    if (scope && scope.includes('snsapi_userinfo')) {
+      try {
+        const userRes = await axios.get(`https://api.weixin.qq.com/sns/userinfo?access_token=${access_token}&openid=${openid}&lang=zh_CN`);
+        console.log('UserInfo response:', JSON.stringify(userRes.data));
+
+        if (!userRes.data.errcode) {
+          nickname = userRes.data.nickname || '微信用户';
+          headimgurl = userRes.data.headimgurl || '';
+        }
+      } catch (ue) {
+        console.error('Get userinfo failed:', ue.message);
+      }
     }
 
     // Save user
     const users = readUsers();
     users[openid] = {
       openid,
-      nickname: nickname || '微信用户',
-      avatar: headimgurl || '',
+      nickname,
+      avatar: headimgurl,
       lastLogin: Date.now()
     };
     writeUsers(users);
@@ -167,8 +169,8 @@ app.get('/auth/wechat/callback', async (req, res) => {
     res.setHeader('Set-Cookie', `wx_session=${sessionId}; Path=/; HttpOnly; Max-Age=604800; SameSite=Lax`);
     res.redirect('/');
   } catch (err) {
-    console.error('WeChat auth error:', err.message);
-    res.status(500).send('微信登录失败，请重试');
+    console.error('WeChat auth error:', err.message, err.response ? err.response.data : '');
+    res.status(500).send(`微信登录失败: ${err.message}`);
   }
 });
 
