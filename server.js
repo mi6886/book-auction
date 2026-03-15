@@ -2,10 +2,30 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
+const axios = require('axios');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'bookadmin123';
+
+// WeChat config
+const WX_APPID = process.env.WX_APPID || 'wxab11b6507af6422a';
+const WX_SECRET = process.env.WX_SECRET || '';
+const WX_REDIRECT_BASE = process.env.WX_REDIRECT_BASE || 'https://book-auction.onrender.com';
+
+// Simple session store (in-memory, resets on restart)
+const sessions = {};
+const USERS_FILE = path.join(__dirname, 'data', 'users.json');
+
+function readUsers() {
+  if (!fs.existsSync(USERS_FILE)) return {};
+  return JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8'));
+}
+
+function writeUsers(users) {
+  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), 'utf-8');
+}
 
 // Ensure data directories exist
 const DATA_DIR = path.join(__dirname, 'data');
@@ -61,6 +81,120 @@ function requireAdmin(req, res, next) {
   }
   next();
 }
+
+// Cookie parser (simple)
+app.use((req, res, next) => {
+  req.cookies = {};
+  const cookieHeader = req.headers.cookie;
+  if (cookieHeader) {
+    cookieHeader.split(';').forEach(cookie => {
+      const [name, ...rest] = cookie.trim().split('=');
+      req.cookies[name] = decodeURIComponent(rest.join('='));
+    });
+  }
+  next();
+});
+
+// Get current logged-in user from session cookie
+function getSessionUser(req) {
+  const sid = req.cookies && req.cookies.wx_session;
+  if (sid && sessions[sid]) return sessions[sid];
+  return null;
+}
+
+// WeChat OAuth: Step 1 - Redirect to WeChat authorization page
+app.get('/auth/wechat', (req, res) => {
+  const redirectUri = encodeURIComponent(`${WX_REDIRECT_BASE}/auth/wechat/callback`);
+  const state = crypto.randomBytes(8).toString('hex');
+  const url = `https://open.weixin.qq.com/connect/oauth2/authorize?appid=${WX_APPID}&redirect_uri=${redirectUri}&response_type=code&scope=snsapi_userinfo&state=${state}#wechat_redirect`;
+  res.redirect(url);
+});
+
+// WeChat OAuth: Step 2 - Handle callback, exchange code for user info
+app.get('/auth/wechat/callback', async (req, res) => {
+  const { code } = req.query;
+  if (!code) {
+    return res.status(400).send('授权失败：缺少 code 参数');
+  }
+
+  try {
+    // Exchange code for access_token
+    const tokenRes = await axios.get('https://api.weixin.qq.com/sns/oauth2/access_token', {
+      params: {
+        appid: WX_APPID,
+        secret: WX_SECRET,
+        code,
+        grant_type: 'authorization_code'
+      }
+    });
+
+    const { access_token, openid, errcode, errmsg } = tokenRes.data;
+    if (errcode) {
+      console.error('WeChat token error:', tokenRes.data);
+      return res.status(500).send(`微信授权失败: ${errmsg}`);
+    }
+
+    // Get user info
+    const userRes = await axios.get('https://api.weixin.qq.com/sns/userinfo', {
+      params: {
+        access_token,
+        openid,
+        lang: 'zh_CN'
+      }
+    });
+
+    const { nickname, headimgurl, errcode: uerr, errmsg: umsg } = userRes.data;
+    if (uerr) {
+      console.error('WeChat userinfo error:', userRes.data);
+      return res.status(500).send(`获取用户信息失败: ${umsg}`);
+    }
+
+    // Save user
+    const users = readUsers();
+    users[openid] = {
+      openid,
+      nickname: nickname || '微信用户',
+      avatar: headimgurl || '',
+      lastLogin: Date.now()
+    };
+    writeUsers(users);
+
+    // Create session
+    const sessionId = crypto.randomBytes(16).toString('hex');
+    sessions[sessionId] = users[openid];
+
+    // Set cookie and redirect to home
+    res.setHeader('Set-Cookie', `wx_session=${sessionId}; Path=/; HttpOnly; Max-Age=604800; SameSite=Lax`);
+    res.redirect('/');
+  } catch (err) {
+    console.error('WeChat auth error:', err.message);
+    res.status(500).send('微信登录失败，请重试');
+  }
+});
+
+// API: Get current user info
+app.get('/api/user/me', (req, res) => {
+  const user = getSessionUser(req);
+  if (!user) {
+    return res.json({ loggedIn: false });
+  }
+  res.json({
+    loggedIn: true,
+    nickname: user.nickname,
+    avatar: user.avatar,
+    openid: user.openid
+  });
+});
+
+// API: Logout
+app.post('/api/user/logout', (req, res) => {
+  const sid = req.cookies && req.cookies.wx_session;
+  if (sid) {
+    delete sessions[sid];
+  }
+  res.setHeader('Set-Cookie', 'wx_session=; Path=/; HttpOnly; Max-Age=0');
+  res.json({ success: true });
+});
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -118,8 +252,13 @@ app.post('/api/books', requireAdmin, upload.array('images', 5), (req, res) => {
   res.json(book);
 });
 
-// API: Place a bid
+// API: Place a bid (requires WeChat login)
 app.post('/api/books/:id/bid', (req, res) => {
+  const user = getSessionUser(req);
+  if (!user) {
+    return res.status(401).json({ error: '请先微信登录后再出价' });
+  }
+
   const books = readBooks();
   const idx = books.findIndex(b => b.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: '书籍不存在' });
@@ -129,9 +268,10 @@ app.post('/api/books/:id/bid', (req, res) => {
     return res.status(400).json({ error: '拍卖已结束，无法出价' });
   }
 
-  const { name, amount } = req.body;
-  if (!name || !amount) {
-    return res.status(400).json({ error: '昵称和出价金额为必填项' });
+  const { amount } = req.body;
+  const name = user.nickname;
+  if (!amount) {
+    return res.status(400).json({ error: '出价金额为必填项' });
   }
 
   const bidAmount = parseFloat(amount);
